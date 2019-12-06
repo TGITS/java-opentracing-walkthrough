@@ -1,41 +1,50 @@
 package com.otsample.api;
 
-import java.io.IOException;
-import java.lang.reflect.Type;
-import java.util.*;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import com.otsample.api.resources.Donut;
+import com.otsample.api.resources.DonutAddRequest;
+import com.otsample.api.resources.Status;
+import com.otsample.api.resources.StatusRes;
+import io.opentracing.contrib.okhttp3.OkHttpClientSpanDecorator;
+import io.opentracing.contrib.okhttp3.TracingInterceptor;
+import io.opentracing.util.GlobalTracer;
+import okhttp3.*;
 
 import javax.servlet.http.HttpServletRequest;
+import java.io.IOException;
+import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 
-import com.google.gson.*;
-import com.google.gson.reflect.TypeToken;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-
-import com.otsample.api.resources.*;
-
-public class KitchenConsumer
-{
+public class KitchenConsumer {
     OkHttpClient client;
     MediaType jsonType;
 
-    public KitchenConsumer()
-    {
-        client = new OkHttpClient.Builder().build();
+    public KitchenConsumer() {
+        // Without tracing
+        //client = new OkHttpClient.Builder().build();
+
+        //With Tracing
+        TracingInterceptor tracingInterceptor = new TracingInterceptor(
+                GlobalTracer.get()/*,
+                Arrays.asList(OkHttpClientSpanDecorator.STANDARD_TAGS)*/);
+        client = new OkHttpClient.Builder()
+                .addInterceptor(tracingInterceptor)
+                .addNetworkInterceptor(tracingInterceptor)
+                .build();
         jsonType = MediaType.parse("application/json");
     }
 
-    public boolean addDonut(HttpServletRequest request, String orderId)
-    {
+    public boolean addDonut(HttpServletRequest request, String orderId) {
         DonutAddRequest donutReq = new DonutAddRequest(orderId);
         RequestBody body = RequestBody.create(jsonType, Utils.toJSON(donutReq));
 
         Request req = new Request.Builder()
-            .url("http://127.0.0.1:10001/kitchen/add_donut")
-            .post(body)
-            .build();
+                .url("http://127.0.0.1:10001/kitchen/add_donut")
+                .post(body)
+                .build();
 
 
         Response res = null;
@@ -49,11 +58,10 @@ public class KitchenConsumer
         return res.code() >= 200 && res.code() < 300;
     }
 
-    public Collection<Donut> getDonuts(HttpServletRequest request)
-    {
+    public Collection<Donut> getDonuts(HttpServletRequest request) {
         Request req = new Request.Builder()
-            .url("http://127.0.0.1:10001/kitchen/check_donuts")
-            .build();
+                .url("http://127.0.0.1:10001/kitchen/check_donuts")
+                .build();
 
         String body = null;
         try {
@@ -67,26 +75,26 @@ public class KitchenConsumer
         }
 
         Gson gson = new Gson();
-        Type collType = new TypeToken<Collection<Donut>>(){}.getType();
+        Type collType = new TypeToken<Collection<Donut>>() {
+        }.getType();
         return gson.fromJson(body, collType);
     }
 
-    public StatusRes checkStatus(HttpServletRequest request, String orderId)
-    {
+    public StatusRes checkStatus(HttpServletRequest request, String orderId) {
         Collection<Donut> donuts = getDonuts(request);
         if (donuts == null)
             return null;
 
         ArrayList<Donut> filtered = new ArrayList<Donut>();
 
-        for (Donut donut: donuts)
+        for (Donut donut : donuts)
             if (donut.getOrderId().equals(orderId))
                 filtered.add(donut);
 
         Status status = Status.READY;
         int estimatedTime = 0;
 
-        for (Donut donut: filtered) {
+        for (Donut donut : filtered) {
             switch (donut.getStatus()) {
                 case NEW_ORDER:
                     estimatedTime += 3;
